@@ -235,9 +235,13 @@ export function Flashcards() {
                 <span className={mode === "hanzi" ? "hanzi" : "pinyin-prompt"}>
                   {mode === "hanzi" ? current.chinese : current.pinyin}
                 </span>
-                <span className="answer-block">
-                  {mode === "hanzi" && <em>{current.pinyin}</em>}
-                  <strong>{current.meaning}</strong>
+                <span className="answer-block" aria-hidden={!revealed}>
+                  {revealed && (
+                    <>
+                      {mode === "hanzi" && <em>{current.pinyin}</em>}
+                      <strong>{current.meaning}</strong>
+                    </>
+                  )}
                 </span>
                 <span className="reveal-cue">{revealed ? "tap to hide" : "tap or press space to reveal"}</span>
               </button>

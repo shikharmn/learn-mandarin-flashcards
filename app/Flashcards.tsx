@@ -77,6 +77,7 @@ export function Flashcards() {
   const [unit, setUnit] = useState(0);
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [showHint, setShowHint] = useState(false);
   const [reviewed, setReviewed] = useState(0);
   const [correct, setCorrect] = useState(0);
   const [mastered, setMastered] = useState<string[]>([]);
@@ -107,6 +108,7 @@ export function Flashcards() {
       setDeck(shuffle(source));
       setIndex(0);
       setRevealed(false);
+      setShowHint(false);
     },
     [allCards, unit],
   );
@@ -127,6 +129,7 @@ export function Flashcards() {
         );
       }
       setRevealed(false);
+      setShowHint(false);
       setIndex((position) => (position + 1) % Math.max(deck.length, 1));
     },
     [current, deck.length, revealed],
@@ -205,19 +208,30 @@ export function Flashcards() {
 
         <section className="study-stage" aria-live="polite">
           <div className="mode-switch" aria-label="Flashcard direction">
-            <button className={mode === "hanzi" ? "selected" : ""} onClick={() => { setMode("hanzi"); setRevealed(false); }}>
+            <button className={mode === "hanzi" ? "selected" : ""} onClick={() => { setMode("hanzi"); setRevealed(false); setShowHint(false); }}>
               汉字 <span>Hanzi → meaning</span>
             </button>
-            <button className={mode === "pinyin" ? "selected" : ""} onClick={() => { setMode("pinyin"); setRevealed(false); }}>
+            <button className={mode === "pinyin" ? "selected" : ""} onClick={() => { setMode("pinyin"); setRevealed(false); setShowHint(false); }}>
               Pīnyīn <span>Pinyin → meaning</span>
             </button>
           </div>
 
           {current ? (
             <>
+              <div className="card-toolbar">
+                <span className={showHint ? "unit-label visible" : "unit-label"} aria-live="polite">
+                  {showHint ? `Unit ${current.unit} · ${current.unitTitle}` : ""}
+                </span>
+                <button
+                  className="hint-button"
+                  onClick={() => setShowHint((value) => !value)}
+                  aria-expanded={showHint}
+                >
+                  {showHint ? "Hide hint" : "Hint"}
+                </button>
+              </div>
               <button className={`flashcard ${revealed ? "revealed" : ""}`} onClick={() => setRevealed((value) => !value)} aria-label={revealed ? "Hide answer" : "Reveal answer"}>
                 <span className="card-corner">{String(current.unit).padStart(2, "0")}</span>
-                <span className="unit-label">Unit {current.unit} · {current.unitTitle}</span>
                 <span className={mode === "hanzi" ? "hanzi" : "pinyin-prompt"}>
                   {mode === "hanzi" ? current.chinese : current.pinyin}
                 </span>

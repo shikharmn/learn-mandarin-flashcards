@@ -72,13 +72,17 @@ kbd { font-family: var(--font-geist-mono), monospace; }
 .mode-switch button span { display: block; font: 9px var(--font-geist-sans), sans-serif; text-transform: uppercase; letter-spacing: .1em; margin-top: 5px; }
 .mode-switch button.selected { color: var(--ink); }
 .mode-switch button.selected::after { content: ""; height: 2px; background: var(--red); position: absolute; left: 0; right: 0; bottom: -1px; }
+.card-toolbar { width: min(590px, 100%); min-height: 29px; margin-bottom: 10px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; }
+.unit-label { flex: 1; color: var(--taupe); font: 9px var(--font-geist-sans), sans-serif; text-transform: uppercase; letter-spacing: .11em; text-align: right; opacity: 0; transform: translateY(3px); transition: opacity .18s ease, transform .18s ease; }
+.unit-label.visible { opacity: 1; transform: none; }
+.hint-button { border: 0; border-bottom: 1px solid var(--red); padding: 4px 0; background: transparent; color: var(--red); cursor: pointer; font: 600 9px var(--font-geist-mono), monospace; letter-spacing: .13em; text-transform: uppercase; white-space: nowrap; }
+.hint-button:hover { color: var(--ink); border-color: var(--ink); }
 .flashcard {
   width: min(590px, 100%); height: 440px; padding: 58px 52px 46px; position: relative; border: 1px solid #cfc2ae; border-radius: 3px; background: var(--card); cursor: pointer; box-shadow: 14px 16px 0 #e2d7c5, 15px 17px 0 #cfc2ae, 0 24px 70px var(--shadow); display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; transition: transform .25s ease, box-shadow .25s ease;
 }
 .flashcard::before { content: ""; position: absolute; inset: 15px; border: 1px solid rgba(166,55,44,.15); pointer-events: none; }
 .flashcard:hover { transform: translateY(-3px); box-shadow: 14px 19px 0 #e2d7c5, 15px 20px 0 #cfc2ae, 0 28px 74px var(--shadow); }
 .card-corner { position: absolute; top: 28px; left: 31px; color: var(--red); font: 11px var(--font-geist-mono), monospace; }
-.unit-label { position: absolute; top: 29px; right: 31px; max-width: 60%; color: var(--taupe); font: 9px var(--font-geist-sans), sans-serif; text-transform: uppercase; letter-spacing: .11em; text-align: right; }
 .hanzi { font: 500 clamp(100px, 10vw, 150px)/1 STSong, Songti SC, Noto Serif CJK SC, serif; letter-spacing: .02em; transition: transform .35s ease; }
 .pinyin-prompt { font: italic 500 clamp(52px, 6vw, 82px)/1.1 Georgia, serif; }
 .answer-block { display: grid; justify-items: center; gap: 9px; margin-top: 28px; min-height: 68px; opacity: 0; transform: translateY(8px); transition: .3s ease; }
@@ -127,7 +131,7 @@ footer { margin: 0 48px; border-top: 1px solid var(--rule); padding: 18px 0 22px
   .workspace { width: calc(100% - 32px); padding: 26px 0; }.mode-switch { width: 100%; }.mode-switch button { flex: 1; padding-inline: 8px; }
   .flashcard, .loading-card { height: 390px; padding-inline: 28px; box-shadow: 8px 10px 0 #e2d7c5, 9px 11px 0 #cfc2ae; }
   .hanzi { font-size: 95px; }.pinyin-prompt { font-size: 48px; }.answer-block strong { font-size: 18px; text-align: center; }
-  .unit-label { max-width: 65%; }.grade-row { gap: 6px; }.grade-row button { height: 46px; gap: 6px; }
+  .card-toolbar { min-height: 36px; align-items: flex-start; }.unit-label { line-height: 1.4; }.grade-row { gap: 6px; }.grade-row button { height: 46px; gap: 6px; }
   footer { margin: 0 20px; }.library-drawer { padding: 28px 22px; }.word-list article { grid-template-columns: 58px 1fr auto; }
 }
 

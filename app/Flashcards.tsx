@@ -11,7 +11,23 @@ type Card = {
 };
 
 type Mode = "hanzi" | "pinyin";
-type Grade = "again" | "good" | "easy";
+type Result = "incorrect" | "correct";
+type CardHistory = Record<string, { seen: boolean; wasWrong: boolean }>;
+
+const HISTORY_KEY = "zika-card-history-v1";
+
+const cardKey = (card: Card) =>
+  `${card.unit}|${card.chinese}|${card.pinyin}|${card.meaning}`;
+
+const readHistory = (): CardHistory => {
+  if (typeof window === "undefined") return {};
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "{}");
+  } catch {
+    localStorage.removeItem(HISTORY_KEY);
+    return {};
+  }
+};
 
 const parseCsv = (text: string): Card[] => {
   const rows: string[][] = [];
@@ -55,19 +71,24 @@ const parseCsv = (text: string): Card[] => {
   }));
 };
 
-const shuffle = <T,>(items: T[]) => {
-  const next = [...items];
-  for (let i = next.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [next[i], next[j]] = [next[j], next[i]];
-  }
-  return next;
+const cardWeight = (card: Card, history: CardHistory) => {
+  const record = history[cardKey(card)];
+  if (!record?.seen) return 4;
+  if (record.wasWrong) return 2;
+  return 1;
 };
 
-const gradeLabel: Record<Grade, string> = {
-  again: "Again",
-  good: "Good",
-  easy: "Easy",
+const pickWeightedIndex = (cards: Card[], history: CardHistory) => {
+  if (!cards.length) return 0;
+  const totalWeight = cards.reduce((total, card) => total + cardWeight(card, history), 0);
+  let draw = Math.random() * totalWeight;
+
+  for (let i = 0; i < cards.length; i += 1) {
+    draw -= cardWeight(cards[i], history);
+    if (draw < 0) return i;
+  }
+
+  return cards.length - 1;
 };
 
 export function Flashcards() {
@@ -80,17 +101,20 @@ export function Flashcards() {
   const [showHint, setShowHint] = useState(false);
   const [reviewed, setReviewed] = useState(0);
   const [correct, setCorrect] = useState(0);
-  const [mastered, setMastered] = useState<string[]>([]);
+  const [history, setHistory] = useState<CardHistory>(readHistory);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
+    const savedHistory = readHistory();
+
     fetch("/vocabulary.csv")
       .then((response) => response.text())
       .then((text) => {
         const cards = parseCsv(text);
         setAllCards(cards);
-        setDeck(shuffle(cards));
+        setDeck(cards);
+        setIndex(pickWeightedIndex(cards, savedHistory));
       });
   }, []);
 
@@ -101,16 +125,18 @@ export function Flashcards() {
 
   const current = deck[index];
   const accuracy = reviewed ? Math.round((correct / reviewed) * 100) : 0;
+  const seen = allCards.filter((card) => history[cardKey(card)]?.seen).length;
+  const seenInDeck = deck.filter((card) => history[cardKey(card)]?.seen).length;
 
   const resetDeck = useCallback(
     (nextUnit = unit) => {
       const source = nextUnit === 0 ? allCards : allCards.filter((card) => card.unit === nextUnit);
-      setDeck(shuffle(source));
-      setIndex(0);
+      setDeck(source);
+      setIndex(pickWeightedIndex(source, history));
       setRevealed(false);
       setShowHint(false);
     },
-    [allCards, unit],
+    [allCards, history, unit],
   );
 
   const chooseUnit = (nextUnit: number) => {
@@ -118,21 +144,27 @@ export function Flashcards() {
     resetDeck(nextUnit);
   };
 
-  const grade = useCallback(
-    (value: Grade) => {
+  const recordResult = useCallback(
+    (result: Result) => {
       if (!current || !revealed) return;
       setReviewed((count) => count + 1);
-      if (value !== "again") setCorrect((count) => count + 1);
-      if (value === "easy") {
-        setMastered((items) =>
-          items.includes(current.chinese) ? items : [...items, current.chinese],
-        );
-      }
+      if (result === "correct") setCorrect((count) => count + 1);
+
+      const key = cardKey(current);
+      const nextHistory = {
+        ...history,
+        [key]: {
+          seen: true,
+          wasWrong: history[key]?.wasWrong || result === "incorrect",
+        },
+      };
+      setHistory(nextHistory);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
       setRevealed(false);
       setShowHint(false);
-      setIndex((position) => (position + 1) % Math.max(deck.length, 1));
+      setIndex(pickWeightedIndex(deck, nextHistory));
     },
-    [current, deck.length, revealed],
+    [current, deck, history, revealed],
   );
 
   useEffect(() => {
@@ -142,13 +174,12 @@ export function Flashcards() {
         event.preventDefault();
         setRevealed((value) => !value);
       }
-      if (event.key === "1") grade("again");
-      if (event.key === "2") grade("good");
-      if (event.key === "3") grade("easy");
+      if (event.key === "1") recordResult("incorrect");
+      if (event.key === "2") recordResult("correct");
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [grade, isLibraryOpen]);
+  }, [isLibraryOpen, recordResult]);
 
   const libraryCards = filtered.filter((card) => {
     const term = query.toLowerCase();
@@ -203,7 +234,7 @@ export function Flashcards() {
             </div>
           </div>
 
-          <p className="key-hint"><kbd>Space</kbd> reveal · <kbd>1–3</kbd> grade</p>
+          <p className="key-hint"><kbd>Space</kbd> reveal · <kbd>1–2</kbd> answer</p>
         </aside>
 
         <section className="study-stage" aria-live="polite">
@@ -246,12 +277,13 @@ export function Flashcards() {
                 <span className="reveal-cue">{revealed ? "tap to hide" : "tap or press space to reveal"}</span>
               </button>
 
-              <div className="grade-row" aria-label="Grade this card">
-                {(["again", "good", "easy"] as Grade[]).map((value, i) => (
-                  <button key={value} disabled={!revealed} onClick={() => grade(value)} className={value}>
-                    <kbd>{i + 1}</kbd><span>{gradeLabel[value]}</span>
-                  </button>
-                ))}
+              <div className="grade-row" aria-label="Record your answer">
+                <button disabled={!revealed} onClick={() => recordResult("incorrect")} className="incorrect">
+                  <kbd>1</kbd><span>Incorrect</span>
+                </button>
+                <button disabled={!revealed} onClick={() => recordResult("correct")} className="correct">
+                  <kbd>2</kbd><span>Correct</span>
+                </button>
               </div>
             </>
           ) : (
@@ -259,8 +291,8 @@ export function Flashcards() {
           )}
 
           <div className="deck-progress">
-            <span>{deck.length ? index + 1 : 0} / {deck.length}</span>
-            <div><i style={{ width: `${deck.length ? ((index + 1) / deck.length) * 100 : 0}%` }} /></div>
+            <span>{seenInDeck} / {deck.length} seen</span>
+            <div><i style={{ width: `${deck.length ? (seenInDeck / deck.length) * 100 : 0}%` }} /></div>
             <span>{unit ? `Unit ${unit}` : "All units"}</span>
           </div>
         </section>
@@ -269,11 +301,11 @@ export function Flashcards() {
           <p className="eyebrow">Today</p>
           <div className="stat"><strong>{reviewed}</strong><span>reviewed</span></div>
           <div className="stat"><strong>{accuracy}<sup>%</sup></strong><span>accuracy</span></div>
-          <div className="stat"><strong>{mastered.length}</strong><span>mastered</span></div>
+          <div className="stat"><strong>{seen}</strong><span>cards seen</span></div>
 
           <div className="ink-note">
             <span>记住</span>
-            <p>Recognition grows through retrieval, not rereading.</p>
+            <p>New cards appear most often. Cards you miss return more frequently.</p>
           </div>
         </aside>
       </section>

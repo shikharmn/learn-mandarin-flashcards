@@ -570,7 +570,9 @@ export function Flashcards() {
                 </div>
               )}
               <p><em>{quizCard.pinyin}</em> · {quizCard.meanings.join(" / ")}</p>
-              <button className="primary-action" onClick={continueQuiz}>Continue</button>
+              <button className="primary-action" onClick={continueQuiz} autoFocus>
+                Continue · Enter
+              </button>
             </div>
           )}
         </article>

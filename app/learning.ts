@@ -17,6 +17,7 @@ export type LearningCard = {
 };
 
 export type QueueStage = "mcq" | "typing";
+export type ChunkPhase = "learn" | "chunk-review" | "cumulative-review";
 
 export type QueueItem = {
   cardId: string;
@@ -30,6 +31,8 @@ export type ChunkSession = {
   unit: number;
   chunkSize: number;
   chunkIndex: number;
+  phase: ChunkPhase;
+  chunkCardIds: string[];
   initialCount: number;
   queue: QueueItem[];
   stats: {
@@ -311,7 +314,9 @@ export const advanceChunkSession = (
   const remaining = session.queue.slice(1);
   const updated = { ...current };
 
-  if (current.stage === "mcq") {
+  if (session.phase !== "learn") {
+    if (!outcome.correct) remaining.push(updated);
+  } else if (current.stage === "mcq") {
     if (outcome.correct) {
       updated.stage = "typing";
       updated.typedStreak = 0;

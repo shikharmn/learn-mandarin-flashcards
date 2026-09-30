@@ -80,6 +80,8 @@ const firstIncompleteChunk = (
 };
 
 const queueLabel = (session: ChunkSession) => {
+  if (session.phase === "chunk-review") return "Current chunk recall";
+  if (session.phase === "cumulative-review") return "All chunks recall";
   const item = session.queue[0];
   if (!item) return "Complete";
   if (item.stage === "mcq") return "Multiple choice";
@@ -87,6 +89,15 @@ const queueLabel = (session: ChunkSession) => {
   if (item.typedMisses === 1) return "Typing · one miss";
   return "Type the answer";
 };
+
+const makeTypedQueue = (cardIds: string[]) =>
+  cardIds.map((cardId) => ({
+    cardId,
+    stage: "typing" as const,
+    typedStreak: 0 as const,
+    typedMisses: 0 as const,
+    factShown: true,
+  }));
 
 export function Flashcards() {
   const [allCards, setAllCards] = useState<LearningCard[]>([]);
@@ -155,7 +166,17 @@ export function Flashcards() {
           current || firstIncompleteChunk(cards, 0, 5, readJson(COMPLETED_CHUNKS_KEY, [])),
         );
         setChunkSession((saved) => {
-          if (saved?.queue.every((item) => validIds.has(item.cardId))) return saved;
+          if (saved?.queue.every((item) => validIds.has(item.cardId))) {
+            const source = unitCards(cards, saved.unit);
+            const restoredChunkIds = saved.chunkCardIds ?? source
+              .slice(saved.chunkIndex * saved.chunkSize, (saved.chunkIndex + 1) * saved.chunkSize)
+              .map((card) => card.id);
+            return {
+              ...saved,
+              phase: saved.phase ?? "learn",
+              chunkCardIds: restoredChunkIds,
+            };
+          }
           try {
             localStorage.removeItem(CHUNK_SESSION_KEY);
           } catch {
@@ -269,6 +290,8 @@ export function Flashcards() {
       unit,
       chunkSize,
       chunkIndex: selectedIndex,
+      phase: "learn",
+      chunkCardIds: cards.map((card) => card.id),
       initialCount: cards.length,
       queue: cards.map((card) => ({
         cardId: card.id,
@@ -303,16 +326,41 @@ export function Flashcards() {
     const isCorrect = pinyinScore === 1 && englishCorrect;
     setQuizFeedback({ kind: "typing", correct: isCorrect, pinyinScore, englishCorrect });
     markStudyDay();
-    if (isCorrect && !currentQueueItem.factShown) {
+    if (isCorrect && chunkSession?.phase === "learn" && !currentQueueItem.factShown) {
       setFactToast(getCharacterFact(quizCard.chinese));
     }
   };
 
   const continueQuiz = () => {
     if (!chunkSession || !currentQueueItem || !quizFeedback) return;
-    const nextSession = advanceChunkSession(chunkSession, quizFeedback);
+    let nextSession = advanceChunkSession(chunkSession, quizFeedback);
 
-    if (!nextSession.queue.length) {
+    if (!nextSession.queue.length && chunkSession.phase === "learn") {
+      nextSession = {
+        ...nextSession,
+        phase: "chunk-review",
+        initialCount: chunkSession.chunkCardIds.length,
+        queue: makeTypedQueue(chunkSession.chunkCardIds),
+      };
+      setChunkSession(nextSession);
+      writeJson(CHUNK_SESSION_KEY, nextSession);
+    } else if (
+      !nextSession.queue.length &&
+      chunkSession.phase === "chunk-review" &&
+      chunkSession.chunkIndex > 0
+    ) {
+      const cumulativeIds = unitCards(allCards, chunkSession.unit)
+        .slice(0, (chunkSession.chunkIndex + 1) * chunkSession.chunkSize)
+        .map((card) => card.id);
+      nextSession = {
+        ...nextSession,
+        phase: "cumulative-review",
+        initialCount: cumulativeIds.length,
+        queue: makeTypedQueue(cumulativeIds),
+      };
+      setChunkSession(nextSession);
+      writeJson(CHUNK_SESSION_KEY, nextSession);
+    } else if (!nextSession.queue.length) {
       const key = chunkKey(chunkSession.unit, chunkSession.chunkSize, chunkSession.chunkIndex);
       const nextCompleted = completedChunks.includes(key)
         ? completedChunks
@@ -429,7 +477,7 @@ export function Flashcards() {
         <section className="completion-card">
           <p className="eyebrow">Chunk complete</p>
           <h2>Queue cleared.</h2>
-          <p>You translated every card correctly twice in a row.</p>
+          <p>You cleared the learning queue and every required typed recall pass.</p>
           <div className="completion-stats">
             <span><strong>{completion.attempts}</strong> attempts</span>
             <span><strong>{completion.halfPinyin}</strong> tone reminders</span>
@@ -450,7 +498,7 @@ export function Flashcards() {
         <p className="eyebrow">Memorization queue</p>
         <h2>Choose a small chunk.</h2>
         <p className="setup-copy">
-          Each card starts as multiple choice, then graduates through two consecutive typed answers.
+          Each card starts as multiple choice, graduates through two consecutive typed answers, then returns in recall passes.
         </p>
         <div className="chunk-controls">
           <label>
@@ -662,7 +710,7 @@ export function Flashcards() {
               <div className="stat"><strong>{chunkSession?.stats.halfPinyin ?? 0}</strong><span>tone reminders</span></div>
             </>
           )}
-          <div className="ink-note"><span>记住</span><p>{studyMode === "review" ? "New cards appear most often. Cards you miss return more frequently." : "Clear the queue by translating every card correctly twice in a row."}</p></div>
+          <div className="ink-note"><span>记住</span><p>{studyMode === "review" ? "New cards appear most often. Cards you miss return more frequently." : "Learn the chunk, recall it in full, then revisit every chunk learned so far."}</p></div>
         </aside>
       </section>
 

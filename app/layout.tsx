@@ -14,7 +14,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     title: "字卡 Zì Kǎ — Mandarin Flashcards",
-    description: "Study 132 Duolingo Section 1 words with Hanzi and Pinyin recall cards.",
+    description: "Master 125 Duolingo Section 1 words with review cards and chunk-based Mandarin recall quizzes.",
     icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
     openGraph: {
       title: "字卡 Zì Kǎ — Mandarin Flashcards",

@@ -21,6 +21,7 @@ export type ChunkPhase = "learn" | "chunk-review" | "cumulative-review";
 
 export type QueueItem = {
   cardId: string;
+  sourceChunk: number;
   stage: QueueStage;
   typedStreak: 0 | 1;
   typedMisses: 0 | 1;
@@ -39,6 +40,9 @@ export type ChunkSession = {
     attempts: number;
     fullCorrect: number;
     halfPinyin: number;
+    recallTotal: number;
+    recallCorrect: number;
+    recallByChunk: Record<string, { total: number; correct: number }>;
   };
 };
 
@@ -315,7 +319,7 @@ export const advanceChunkSession = (
   const updated = { ...current };
 
   if (session.phase !== "learn") {
-    if (!outcome.correct) remaining.push(updated);
+    // Recall passes are one-shot: record the result and always remove the card.
   } else if (current.stage === "mcq") {
     if (outcome.correct) {
       updated.stage = "typing";
@@ -341,6 +345,21 @@ export const advanceChunkSession = (
     remaining.push(updated);
   }
 
+  const isRecall = session.phase !== "learn";
+  const previousChunkRecall = session.stats.recallByChunk?.[String(current.sourceChunk)] ?? {
+    total: 0,
+    correct: 0,
+  };
+  const recallByChunk = isRecall
+    ? {
+        ...(session.stats.recallByChunk ?? {}),
+        [String(current.sourceChunk)]: {
+          total: previousChunkRecall.total + 1,
+          correct: previousChunkRecall.correct + (outcome.correct ? 1 : 0),
+        },
+      }
+    : (session.stats.recallByChunk ?? {});
+
   return {
     ...session,
     queue: remaining,
@@ -349,6 +368,10 @@ export const advanceChunkSession = (
       attempts: session.stats.attempts + 1,
       fullCorrect: session.stats.fullCorrect + (outcome.correct ? 1 : 0),
       halfPinyin: session.stats.halfPinyin + (outcome.pinyinScore === 0.5 ? 1 : 0),
+      recallTotal: (session.stats.recallTotal ?? 0) + (isRecall ? 1 : 0),
+      recallCorrect:
+        (session.stats.recallCorrect ?? 0) + (isRecall && outcome.correct ? 1 : 0),
+      recallByChunk,
     },
   };
 };

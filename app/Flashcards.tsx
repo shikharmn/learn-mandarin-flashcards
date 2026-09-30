@@ -90,9 +90,13 @@ const queueLabel = (session: ChunkSession) => {
   return "Type the answer";
 };
 
-const makeTypedQueue = (cardIds: string[]) =>
-  cardIds.map((cardId) => ({
+const makeTypedQueue = (
+  cardIds: string[],
+  sourceChunkForIndex: (index: number) => number,
+) =>
+  cardIds.map((cardId, index) => ({
     cardId,
+    sourceChunk: sourceChunkForIndex(index),
     stage: "typing" as const,
     typedStreak: 0 as const,
     typedMisses: 0 as const,
@@ -175,6 +179,16 @@ export function Flashcards() {
               ...saved,
               phase: saved.phase ?? "learn",
               chunkCardIds: restoredChunkIds,
+              queue: saved.queue.map((item) => ({
+                ...item,
+                sourceChunk: item.sourceChunk ?? saved.chunkIndex,
+              })),
+              stats: {
+                ...saved.stats,
+                recallTotal: saved.stats.recallTotal ?? 0,
+                recallCorrect: saved.stats.recallCorrect ?? 0,
+                recallByChunk: saved.stats.recallByChunk ?? {},
+              },
             };
           }
           try {
@@ -199,6 +213,12 @@ export function Flashcards() {
   const currentQueueItem = chunkSession?.queue[0];
   const quizCard = currentQueueItem ? cardMap.get(currentQueueItem.cardId) : undefined;
   const optionRound = chunkSession?.stats.attempts ?? 0;
+  const visibleChunkStats = chunkSession?.stats ?? completion;
+  const recallTotal = visibleChunkStats?.recallTotal ?? 0;
+  const recallCorrect = visibleChunkStats?.recallCorrect ?? 0;
+  const recallAccuracy = recallTotal ? Math.round((recallCorrect / recallTotal) * 100) : null;
+  const recallByChunk = Object.entries(visibleChunkStats?.recallByChunk ?? {})
+    .sort(([left], [right]) => Number(left) - Number(right));
 
   const mcqOptions = useMemo(() => {
     void optionRound;
@@ -295,12 +315,20 @@ export function Flashcards() {
       initialCount: cards.length,
       queue: cards.map((card) => ({
         cardId: card.id,
+        sourceChunk: selectedIndex,
         stage: "mcq",
         typedStreak: 0,
         typedMisses: 0,
         factShown: false,
       })),
-      stats: { attempts: 0, fullCorrect: 0, halfPinyin: 0 },
+      stats: {
+        attempts: 0,
+        fullCorrect: 0,
+        halfPinyin: 0,
+        recallTotal: 0,
+        recallCorrect: 0,
+        recallByChunk: {},
+      },
     };
     setChunkSession(next);
     writeJson(CHUNK_SESSION_KEY, next);
@@ -340,7 +368,7 @@ export function Flashcards() {
         ...nextSession,
         phase: "chunk-review",
         initialCount: chunkSession.chunkCardIds.length,
-        queue: makeTypedQueue(chunkSession.chunkCardIds),
+        queue: makeTypedQueue(chunkSession.chunkCardIds, () => chunkSession.chunkIndex),
       };
       setChunkSession(nextSession);
       writeJson(CHUNK_SESSION_KEY, nextSession);
@@ -356,7 +384,9 @@ export function Flashcards() {
         ...nextSession,
         phase: "cumulative-review",
         initialCount: cumulativeIds.length,
-        queue: makeTypedQueue(cumulativeIds),
+        queue: makeTypedQueue(cumulativeIds, (index) =>
+          Math.floor(index / chunkSession.chunkSize),
+        ),
       };
       setChunkSession(nextSession);
       writeJson(CHUNK_SESSION_KEY, nextSession);
@@ -481,7 +511,7 @@ export function Flashcards() {
           <div className="completion-stats">
             <span><strong>{completion.attempts}</strong> attempts</span>
             <span><strong>{completion.halfPinyin}</strong> tone reminders</span>
-            <span><strong>{completion.fullCorrect}</strong> correct</span>
+            <span><strong>{completion.recallTotal ? Math.round((completion.recallCorrect / completion.recallTotal) * 100) : 0}%</strong> recall accuracy</span>
           </div>
           <button className="primary-action" onClick={() => startChunk(chunkIndex)}>
             Start next chunk
@@ -610,7 +640,13 @@ export function Flashcards() {
 
           {quizFeedback && (
             <div className={`quiz-feedback ${quizFeedback.correct ? "correct" : "incorrect"}`} role="status">
-              <strong>{quizFeedback.correct ? "Correct" : "Keep this one in the queue"}</strong>
+              <strong>
+                {quizFeedback.correct
+                  ? "Correct"
+                  : chunkSession.phase === "learn"
+                    ? "Keep this one in the queue"
+                    : "Inaccuracy noted · moving on"}
+              </strong>
               {quizFeedback.kind === "typing" && (
                 <div className="field-scores">
                   <span>Pinyin: {quizFeedback.pinyinScore === 1 ? "1" : quizFeedback.pinyinScore === 0.5 ? "½ · tones missing" : "0"}</span>
@@ -626,7 +662,7 @@ export function Flashcards() {
         </article>
 
         <div className="deck-progress quiz-progress">
-          <span>{finished} graduated</span>
+          <span>{finished} {chunkSession.phase === "learn" ? "graduated" : "answered"}</span>
           <div><i style={{ width: `${(finished / chunkSession.initialCount) * 100}%` }} /></div>
           <span>{chunkSession.stats.attempts} attempts</span>
         </div>
@@ -696,7 +732,7 @@ export function Flashcards() {
         </section>
 
         <aside className="side-panel right-panel">
-          <p className="eyebrow">{studyMode === "review" ? "Today" : "Current chunk"}</p>
+          <p className="eyebrow">{studyMode === "review" ? "Today" : "Recall stats"}</p>
           {studyMode === "review" ? (
             <>
               <div className="stat"><strong>{reviewed}</strong><span>reviewed</span></div>
@@ -705,9 +741,18 @@ export function Flashcards() {
             </>
           ) : (
             <>
-              <div className="stat"><strong>{chunkSession?.queue.length ?? 0}</strong><span>in queue</span></div>
-              <div className="stat"><strong>{chunkSession?.stats.attempts ?? 0}</strong><span>attempts</span></div>
-              <div className="stat"><strong>{chunkSession?.stats.halfPinyin ?? 0}</strong><span>tone reminders</span></div>
+              <div className="stat"><strong>{recallAccuracy ?? "—"}{recallAccuracy !== null && <sup>%</sup>}</strong><span>overall recall</span></div>
+              <div className="stat"><strong>{recallTotal - recallCorrect}</strong><span>inaccuracies</span></div>
+              <div className="chunk-accuracy-list" aria-label="Recall accuracy by chunk">
+                <span>By chunk</span>
+                {recallByChunk.length ? recallByChunk.map(([chunk, stats]) => (
+                  <div key={chunk}>
+                    <b>Chunk {Number(chunk) + 1}</b>
+                    <strong>{Math.round((stats.correct / stats.total) * 100)}%</strong>
+                    <small>{stats.correct}/{stats.total}</small>
+                  </div>
+                )) : <p>No recall answers yet.</p>}
+              </div>
             </>
           )}
           <div className="ink-note"><span>记住</span><p>{studyMode === "review" ? "New cards appear most often. Cards you miss return more frequently." : "Learn the chunk, recall it in full, then revisit every chunk learned so far."}</p></div>
